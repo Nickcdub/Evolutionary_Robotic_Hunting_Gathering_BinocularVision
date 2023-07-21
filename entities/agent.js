@@ -772,49 +772,63 @@ class Agent {
 
     coneVision(input) {
         const rays = params.AGENT_VISION_RAYS - 1;
-        const angle = params.AGENT_VISION_ANGLE * Math.PI / 180;
+        const angle = params.AGENT_VISION_ANGLE * Math.PI / 210;
         const angleBetw = angle / rays;
-
-        let currAngle = this.heading - angle / 2;
-
+    
+        // Define the desired field of view for each eye
+        const desiredFOV = Math.PI/4; // 45 degrees
+        const halfDesiredFOV = desiredFOV / 2;
+    
+        // Calculate the starting and ending angles for each eye's vision cone
+        let startAngleEye1 = this.heading - halfDesiredFOV; // Left eye
+        let startAngleEye2 = this.heading + halfDesiredFOV; // Right eye
+    
         let eyes = this.getEyePos();
-
+    
         this.spotted = [];
         this.visCol = [];
-
+    
         let entities = this.game.population.getEntitiesInWorld(this.worldId, !params.AGENT_NEIGHBORS);
         let walls = [];
         if (params.AGENT_PER_WORLD === 0) {
             walls = this.game.population.worlds.get(params.SPLIT_SPECIES ? this.worldId : 0).walls;
-        }
-        else if (this.worldId && this.game.population.worlds.get(this.worldId))
+        } else if (this.worldId && this.game.population.worlds.get(this.worldId))
             walls = this.game.population.worlds.get(this.worldId).walls;
         else
             walls = this.game.population.worlds.get(0).walls;
-
+    
+        // Loop through each eye's rays separately
         for (let i = 0; i <= rays; i++) {
+            let currAngleEye1 = startAngleEye1 + i * angleBetw; // Left eye
+            let currAngleEye2 = startAngleEye2 + i * angleBetw; // Right eye
 
-            while (currAngle < 0) {
-                currAngle += Math.PI * 2;
+            while (currAngleEye1 < 0) {
+                currAngleEye1 += Math.PI * 2;
             }
-            while (currAngle > 2 * Math.PI) {
-                currAngle -= Math.PI * 2;
+            while (currAngleEye1 > 2 * Math.PI) {
+                currAngleEye1 -= Math.PI * 2;
             }
 
-            const line = {
-                slope: Math.tan(currAngle),
-                yInt: eyes.y - eyes.x * Math.tan(currAngle)
+            while (currAngleEye2 < 0) {
+                currAngleEye2 += Math.PI * 2;
             }
-            let minDist = Infinity;
-            let hueOfMinDist = 0;
-            let closestPoint = null;
+            while (currAngleEye2 > 2 * Math.PI) {
+                currAngleEye2 -= Math.PI * 2;
+            }
 
-            let inRightHalf = currAngle <= Math.PI / 2 || currAngle > Math.PI * 3 / 2;
+            // Vision ray calculations and entity checks for the left eye
+            const lineEye1 = {
+                slope: Math.tan(currAngleEye1),
+                yInt: eyes.y - eyes.x * Math.tan(currAngleEye1)
+            }
+            let minDistEye1 = Infinity;
+            let hueOfMinDistEye1 = 0;
+            let closestPointEye1 = null;
+            let inRightHalfEye1 = currAngleEye1 <= Math.PI / 2 || currAngleEye1 > Math.PI * 3 / 2;
 
-            //let inTopHalf = currAngle >= 0 && currAngle < Math.PI;
-            //Check for wall collisions
+            // Check for wall collisions for the left eye
             walls.forEach(wall => {
-                let colVals = this.visionRayWallCollision(line, wall);
+                let colVals = this.visionRayWallCollision(lineEye1, wall);
                 let lowY = Math.min(wall.yStart, wall.yEnd);
                 let highY = Math.max(wall.yStart, wall.yEnd);
                 let lowX = Math.min(wall.xStart, wall.xEnd);
@@ -825,46 +839,98 @@ class Agent {
                     && (colVals.x <= highX || eqThrsh(colVals.x, highX));
                 if (onSeg) {
                     let wallDist = distance(eyes, colVals);
-                    if (wallDist < minDist && (inRightHalf === colVals.x >= eyes.x)) {
-                        minDist = wallDist;
-                        hueOfMinDist = wall.getDataHue();//tempory value to change
-                        closestPoint = colVals;
+                    if (wallDist < minDistEye1 && (inRightHalfEye1 === colVals.x >= eyes.x)) {
+                        minDistEye1 = wallDist;
+                        hueOfMinDistEye1 = wall.getDataHue(); // temporary value to change
+                        closestPointEye1 = colVals;
                     }
                 }
             });
 
+            // Check for entity collisions for the left eye
             entities.forEach(entity => {
                 let hasPeeking = params.BUSH_SIGHT_MODE == "transparent" || (params.BUSH_SIGHT_MODE == "prey_advantage" && this.foodHierarchyIndex == 0)
                     || (params.BUSH_SIGHT_MODE == "predator_advantage" && this.foodHierarchyIndex > 0);
                 let ignore = entity instanceof Food && hasPeeking && distance(eyes, entity) < entity.radius;
-                if (!ignore && (inRightHalf == entity.x >= eyes.x) && !entity.removeFromWorld && entity !== this && (entity.isActive || params.INACTIVE_PREY_TARGETABLE)) {
-                    let newSpot = this.visionRayCollision(line, entity, eyes);
+                if (!ignore && (inRightHalfEye1 == entity.x >= eyes.x) && !entity.removeFromWorld && entity !== this && (entity.isActive || params.INACTIVE_PREY_TARGETABLE)) {
+                    let newSpot = this.visionRayCollision(lineEye1, entity, eyes);
                     let newDist = distance(eyes, newSpot);
-                    if (newDist < minDist) {
-                        minDist = newDist;
-                        hueOfMinDist = entity.getDataHue(this);
-
-                        //
-                        // if ((params.HUNTING_MODE === "hierarchy_spectrum" || params.HUNTING_MODE === "hierarchy") && (entity instanceof Agent)) {
-                        //     hueOfMinDist = entity.getDataHue(this);
-                        // }
-                        closestPoint = newSpot;
+                    if (newDist < minDistEye1) {
+                        minDistEye1 = newDist;
+                        hueOfMinDistEye1 = entity.getDataHue(this);
+                        closestPointEye1 = newSpot;
                     }
                 }
             });
-            if (closestPoint != null) this.visCol.push(closestPoint);
-            let spotVals = { dist: minDist, angle: currAngle, hue: hueOfMinDist };
-            this.spotted.push(spotVals);
 
-            //Hard coded k value was hand tweaked, and not analytically determined
-            //let distInput = 2 / (1 + Math.E ** (minDist/150)); This is the old dist function
-            let distInput = AgentInputUtil.normalizeVisionDist(minDist);
-            input.push(distInput);
-            input.push((hueOfMinDist) / 360);
-            currAngle += angleBetw;
+            // Store the closest collision point and distance for the left eye
+            if (closestPointEye1 != null) this.visCol.push(closestPointEye1);
+            let spotValsEye1 = { dist: minDistEye1, angle: currAngleEye1, hue: hueOfMinDistEye1 };
+            this.spotted.push(spotValsEye1);
+
+            // Vision ray calculations and entity checks for the right eye
+            const lineEye2 = {
+                slope: Math.tan(currAngleEye2),
+                yInt: eyes.y - eyes.x * Math.tan(currAngleEye2)
+            }
+            let minDistEye2 = Infinity;
+            let hueOfMinDistEye2 = 0;
+            let closestPointEye2 = null;
+            let inRightHalfEye2 = currAngleEye2 <= Math.PI / 2 || currAngleEye2 > Math.PI * 3 / 2;
+
+            // Check for wall collisions for the right eye
+            walls.forEach(wall => {
+                let colVals = this.visionRayWallCollision(lineEye2, wall);
+                let lowY = Math.min(wall.yStart, wall.yEnd);
+                let highY = Math.max(wall.yStart, wall.yEnd);
+                let lowX = Math.min(wall.xStart, wall.xEnd);
+                let highX = Math.max(wall.xStart, wall.xEnd);
+                const onSeg = (colVals.y > lowY || eqThrsh(colVals.y, lowY))
+                    && (colVals.y < highY || eqThrsh(colVals.y, highY))
+                    && (colVals.x > lowX || eqThrsh(colVals.x, lowX))
+                    && (colVals.x <= highX || eqThrsh(colVals.x, highX));
+                if (onSeg) {
+                    let wallDist = distance(eyes, colVals);
+                    if (wallDist < minDistEye2 && (inRightHalfEye2 === colVals.x >= eyes.x)) {
+                        minDistEye2 = wallDist;
+                        hueOfMinDistEye2 = wall.getDataHue(); // temporary value to change
+                        closestPointEye2 = colVals;
+                    }
+                }
+            });
+
+            // Check for entity collisions for the right eye
+            entities.forEach(entity => {
+                let hasPeeking = params.BUSH_SIGHT_MODE == "transparent" || (params.BUSH_SIGHT_MODE == "prey_advantage" && this.foodHierarchyIndex == 0)
+                    || (params.BUSH_SIGHT_MODE == "predator_advantage" && this.foodHierarchyIndex > 0);
+                let ignore = entity instanceof Food && hasPeeking && distance(eyes, entity) < entity.radius;
+                if (!ignore && (inRightHalfEye2 == entity.x >= eyes.x) && !entity.removeFromWorld && entity !== this && (entity.isActive || params.INACTIVE_PREY_TARGETABLE)) {
+                    let newSpot = this.visionRayCollision(lineEye2, entity, eyes);
+                    let newDist = distance(eyes, newSpot);
+                    if (newDist < minDistEye2) {
+                        minDistEye2 = newDist;
+                        hueOfMinDistEye2 = entity.getDataHue(this);
+                        closestPointEye2 = newSpot;
+                    }
+                }
+            });
+
+            // Store the closest collision point and distance for the right eye
+            if (closestPointEye2 != null) this.visCol.push(closestPointEye2);
+            let spotValsEye2 = { dist: minDistEye2, angle: currAngleEye2, hue: hueOfMinDistEye2 };
+            this.spotted.push(spotValsEye2);
+
+            // Store the inputs for the neural network based on binocular vision data
+            let distInputEye1 = AgentInputUtil.normalizeVisionDist(minDistEye1);
+            let distInputEye2 = AgentInputUtil.normalizeVisionDist(minDistEye2);
+            input.push(distInputEye1);
+            input.push((hueOfMinDistEye1) / 360);
+            input.push(distInputEye2);
+            input.push((hueOfMinDistEye2) / 360);
         }
-    }
 
+    }
+    
     drawTextAgent(ctx, text, x = this.x, y = this.y, color = "orange", align = "center") {
         ctx.fillStyle = color;
         ctx.font = parseInt(2 * this.diameter / 3) + "px sans-serif";
