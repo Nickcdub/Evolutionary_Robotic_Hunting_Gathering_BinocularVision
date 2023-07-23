@@ -770,18 +770,128 @@ class Agent {
         return intersect;
     }
 
-    coneVision(input) {
+    coneVision(input){
+        // Check if the checkbox with id "binocular" is checked or unchecked
+    const binocularCheckbox = document.getElementById("binocular");
+    const isBinocularChecked = binocularCheckbox.checked;
+
+    // Now you can use the "isBinocularChecked" variable to determine the binocular mode in your code
+    if (isBinocularChecked) {
+        this.coneBiVision(input)
+    } else {
+        this.coneMonoVision(input)
+    }
+    }
+
+    coneMonoVision(input) {
+        const rays = params.AGENT_VISION_RAYS - 1;
+        const angle = params.AGENT_VISION_ANGLE * Math.PI / 210;
+        const angleBetw = angle / rays;
+    
+        // Define the desired field of view for each eye
+        const desiredFOV = Math.PI / 2; // 45 degrees
+        const halfDesiredFOV = desiredFOV / 2; //Note: fans out lines
+    
+        // Calculate the starting and ending angles for each eye's vision cone
+        let startAngleEye1 = this.heading - halfDesiredFOV; // Left eye
+    
+        let eyes = this.getEyePos();
+    
+        this.spotted = [];
+        this.visCol = [];
+    
+        let entities = this.game.population.getEntitiesInWorld(this.worldId, !params.AGENT_NEIGHBORS);
+        let walls = [];
+        if (params.AGENT_PER_WORLD === 0) {
+            walls = this.game.population.worlds.get(params.SPLIT_SPECIES ? this.worldId : 0).walls;
+        } else if (this.worldId && this.game.population.worlds.get(this.worldId))
+            walls = this.game.population.worlds.get(this.worldId).walls;
+        else
+            walls = this.game.population.worlds.get(0).walls;
+    
+        // Loop through each eye's rays separately
+        for (let i = 0; i <= rays; i++) {
+            let currAngleEye1 = startAngleEye1 + i * angleBetw; // Left eye
+
+            while (currAngleEye1 < 0) {
+                currAngleEye1 += Math.PI * 2;
+            }
+            while (currAngleEye1 > 2 * Math.PI) {
+                currAngleEye1 -= Math.PI * 2;
+            }
+
+            // Vision ray calculations and entity checks for the left eye
+            const lineEye1 = {
+                slope: Math.tan(currAngleEye1),
+                yInt: eyes.y - eyes.x * Math.tan(currAngleEye1)
+            }
+            let minDistEye1 = Infinity;
+            let hueOfMinDistEye1 = 0;
+            let closestPointEye1 = null;
+            let inRightHalfEye1 = currAngleEye1 <= Math.PI / 2 || currAngleEye1 > Math.PI * 3 / 2;
+
+            // Check for wall collisions for the left eye
+            walls.forEach(wall => {
+                let colVals = this.visionRayWallCollision(lineEye1, wall);
+                let lowY = Math.min(wall.yStart, wall.yEnd);
+                let highY = Math.max(wall.yStart, wall.yEnd);
+                let lowX = Math.min(wall.xStart, wall.xEnd);
+                let highX = Math.max(wall.xStart, wall.xEnd);
+                const onSeg = (colVals.y > lowY || eqThrsh(colVals.y, lowY))
+                    && (colVals.y < highY || eqThrsh(colVals.y, highY))
+                    && (colVals.x > lowX || eqThrsh(colVals.x, lowX))
+                    && (colVals.x <= highX || eqThrsh(colVals.x, highX));
+                if (onSeg) {
+                    let wallDist = distance(eyes, colVals);
+                    if (wallDist < minDistEye1 && (inRightHalfEye1 === colVals.x >= eyes.x)) {
+                        minDistEye1 = wallDist;
+                        hueOfMinDistEye1 = wall.getDataHue(); // temporary value to change
+                        closestPointEye1 = colVals;
+                    }
+                }
+            });
+
+            // Check for entity collisions for the left eye
+            entities.forEach(entity => {
+                let hasPeeking = params.BUSH_SIGHT_MODE == "transparent" || (params.BUSH_SIGHT_MODE == "prey_advantage" && this.foodHierarchyIndex == 0)
+                    || (params.BUSH_SIGHT_MODE == "predator_advantage" && this.foodHierarchyIndex > 0);
+                let ignore = entity instanceof Food && hasPeeking && distance(eyes, entity) < entity.radius;
+                if (!ignore && (inRightHalfEye1 == entity.x >= eyes.x) && !entity.removeFromWorld && entity !== this && (entity.isActive || params.INACTIVE_PREY_TARGETABLE)) {
+                    let newSpot = this.visionRayCollision(lineEye1, entity, eyes);
+                    let newDist = distance(eyes, newSpot);
+                    if (newDist < minDistEye1) {
+                        minDistEye1 = newDist;
+                        hueOfMinDistEye1 = entity.getDataHue(this);
+                        closestPointEye1 = newSpot;
+                    }
+                }
+            });
+
+            // Store the closest collision point and distance for the left eye
+            if (closestPointEye1 != null) this.visCol.push(closestPointEye1);
+            let spotValsEye1 = { dist: minDistEye1, angle: currAngleEye1, hue: hueOfMinDistEye1 };
+            this.spotted.push(spotValsEye1);
+
+            // Store the inputs for the neural network based on binocular vision data
+            let distInputEye1 = AgentInputUtil.normalizeVisionDist(minDistEye1);
+            input.push(distInputEye1);
+            input.push((hueOfMinDistEye1) / 360);
+        }
+
+    }
+
+    coneBiVision(input) {
         const rays = params.AGENT_VISION_RAYS - 1;
         const angle = params.AGENT_VISION_ANGLE * Math.PI / 270;
         const angleBetw = angle / rays;
     
         // Define the desired field of view for each eye
-        const desiredFOV = Math.PI/4; // 45 degrees
+        const desiredFOV = Math.PI/4; 
         const halfDesiredFOV = desiredFOV / 2;
     
         // Calculate the starting and ending angles for each eye's vision cone
-        let startAngleEye1 = this.heading - Math.PI / 2 - halfDesiredFOV; // Pointing at 10 o'clock
-        let startAngleEye2 = this.heading - Math.PI / 2 + halfDesiredFOV; // Pointing at 2 o'clock
+        let startAngleEye1 = this.heading - Math.PI / 2 - halfDesiredFOV/2; // Pointing at 10 o'clock
+        let startAngleEye2 = this.heading - Math.PI / 2 + halfDesiredFOV*2; // Pointing at 2 o'clock
     
         let eyes = this.getEyePos();
     
