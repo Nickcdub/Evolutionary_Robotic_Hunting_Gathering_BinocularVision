@@ -772,7 +772,7 @@ class Agent {
 
     coneVision(input) {
         const rays = params.AGENT_VISION_RAYS - 1;
-        const angle = params.AGENT_VISION_ANGLE * Math.PI / 210;
+        const angle = params.AGENT_VISION_ANGLE * Math.PI / 270;
         const angleBetw = angle / rays;
     
         // Define the desired field of view for each eye
@@ -780,8 +780,8 @@ class Agent {
         const halfDesiredFOV = desiredFOV / 2;
     
         // Calculate the starting and ending angles for each eye's vision cone
-        let startAngleEye1 = this.heading - halfDesiredFOV; // Left eye
-        let startAngleEye2 = this.heading + halfDesiredFOV; // Right eye
+        let startAngleEye1 = this.heading - Math.PI / 2 - halfDesiredFOV; // Pointing at 10 o'clock
+        let startAngleEye2 = this.heading - Math.PI / 2 + halfDesiredFOV; // Pointing at 2 o'clock
     
         let eyes = this.getEyePos();
     
