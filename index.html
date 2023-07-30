@@ -4,6 +4,9 @@
 <head>
     <meta charset="utf-8">
     <title>NEAT Hunting and Fogaring Simulation</title>
+    <script type ="text/javascript"
+    src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.js">
+    </script>
     <script type="text/javascript" src="http://73.225.31.4:8888/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="./util.js"></script>
@@ -155,10 +158,10 @@
             <input type="checkbox" id="save_to_db">
             <br>
             <label for="db"> Database Name: </label>
-            <input type="text" id="db" value="testDB">
+            <input type="text" id="db" value="tcss435">
             <br>
             <label for="db_collection"> Collection Name: </label>
-            <input type="text" id="db_collection" value="NEATtests">
+            <input type="text" id="db_collection" value="Red1_Monocular">
 
             <br>
             <label for="gen_to_save"> Generation to Save to DB: </label>
